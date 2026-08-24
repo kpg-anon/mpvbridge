@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <ImageView
+            android:id="@+id/heroArtwork"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:background="@drawable/bg_artwork"
+            android:contentDescription="@string/artwork_description"
+            android:padding="60dp"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_album_placeholder" />
+
+        <TextView
+            android:id="@+id/heroTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="3"
+            android:text="@string/nothing_playing"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/heroArtist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:singleLine="true"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <SeekBar
+            android:id="@+id/seekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/positionLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/zero_time"
+                android:textColor="@color/text_tertiary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/durationLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="end"
+                android:text="@string/zero_time"
+                android:textColor="@color/text_tertiary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton android:id="@+id/heroFavorite"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="52dp" android:layout_height="48dp"
+                android:contentDescription="@string/favorite"
+                android:src="@drawable/ic_star" />
+
+            <ImageButton android:id="@+id/heroPrevious"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="56dp" android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:contentDescription="@string/previous"
+                android:src="@drawable/ic_previous" />
+
+            <ImageButton android:id="@+id/heroPlayPause"
+                style="@style/Widget.Material3.Button.IconButton.Filled"
+                android:layout_width="76dp" android:layout_height="56dp"
+                android:layout_marginStart="10dp" android:layout_marginEnd="10dp"
+                android:contentDescription="@string/play_pause"
+                android:src="@drawable/ic_play" />
+
+            <ImageButton android:id="@+id/heroNext"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="56dp" android:layout_height="48dp"
+                android:layout_marginEnd="6dp"
+                android:contentDescription="@string/next"
+                android:src="@drawable/ic_next" />
+
+            <ImageButton android:id="@+id/heroShuffle"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="52dp" android:layout_height="48dp"
+                android:contentDescription="@string/shuffle"
+                android:src="@drawable/ic_shuffle" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

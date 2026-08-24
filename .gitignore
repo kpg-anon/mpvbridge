@@ -1,0 +1,33 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+.cxx/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local working notes, never published
+docs/
+
+# Editors / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Dev pipeline scratch
+.dev-device
+.daemon-build.zip
+.agent-lf.sh
+.run-args

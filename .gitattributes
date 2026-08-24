@@ -1,0 +1,8 @@
+# This project's scripts run on Android. A stray CR makes Termux's bash fail with
+# `$'\r': command not found`, so normalise the whole tree to LF.
+* text=auto eol=lf
+
+*.jar binary
+*.png binary
+*.apk binary
+*.bat text eol=crlf

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "termux-mpv-controls"
+version = "0.1.0"
+description = "Bridges mpv's JSON IPC socket in Termux to the Termux mpv Controls companion app"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "kpganon" }]
+dependencies = []
+
+[project.scripts]
+mpvbridge = "mpvbridge.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mpvbridge"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="0dp" android:paddingBottom="6dp"
+            android:text="@string/settings_connection" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <EditText android:id="@+id/settingHost"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:autofillHints="" android:hint="@string/settings_host"
+            android:inputType="text" android:textColor="@color/text_primary" />
+
+        <EditText android:id="@+id/settingPort"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:autofillHints="" android:hint="@string/settings_port"
+            android:inputType="number" android:textColor="@color/text_primary" />
+
+        <EditText android:id="@+id/settingToken"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:autofillHints="" android:hint="@string/settings_token"
+            android:inputType="text" android:textColor="@color/text_primary" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:paddingBottom="6dp"
+            android:text="@string/settings_playlist" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/settingHideUnavailable"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/settings_hide_unavailable"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingBottom="8dp" android:text="@string/settings_hide_unavailable_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/settingRefreshOnLaunch"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/settings_refresh_on_launch"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/settings_refresh_on_launch_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:paddingBottom="6dp"
+            android:text="@string/settings_playback" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/settingKeepAlive"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/settings_keep_alive"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/settings_keep_alive_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:paddingBottom="6dp"
+            android:text="@string/settings_launch" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <EditText android:id="@+id/settingLaunchCommand"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:autofillHints="" android:hint="@string/settings_launch_command"
+            android:inputType="textNoSuggestions" android:textColor="@color/text_primary"
+            android:textSize="13sp" />
+
+        <TextView android:id="@+id/launchStatus"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingTop="4dp" android:text="@string/settings_launch_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/settingStart"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="10dp" android:text="@string/settings_start"
+            app:icon="@drawable/ic_terminal" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:paddingBottom="6dp"
+            android:text="@string/settings_favorites" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/settingExport" style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp" android:layout_weight="1"
+                android:text="@string/settings_export" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/settingImport" style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_marginStart="6dp" android:layout_weight="1"
+                android:text="@string/settings_import" />
+        </LinearLayout>
+
+        <TextView android:id="@+id/favoritesStatus"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingTop="6dp" android:textColor="@color/text_tertiary"
+            android:textSize="12sp" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:paddingBottom="6dp"
+            android:text="@string/settings_about" android:textAllCaps="true"
+            android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <TextView android:id="@+id/aboutText"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingBottom="24dp" android:textColor="@color/text_tertiary"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>
