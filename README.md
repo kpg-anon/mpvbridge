@@ -3,8 +3,8 @@
 <img src="https://raw.githubusercontent.com/kpg-anon/mpvbridge/main/.github/assets/hero.svg" alt="mpvbridge — native Android media controls for mpv running in Termux" width="880">
 
 <p>
-  <a href="https://github.com/kpg-anon/mpvbridge/releases"><img src="https://img.shields.io/github/v/release/kpg-anon/mpvbridge?display_name=tag&logo=github&label=release&color=FF1FD0&cacheSeconds=3600" alt="Latest release"></a>
-  <a href="https://github.com/kpg-anon/mpvbridge/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep%20a%20changelog-FF1FD0" alt="Changelog"></a>
+  <a href="https://github.com/kpg-anon/mpvbridge/releases"><img src="https://img.shields.io/github/v/release/kpg-anon/mpvbridge?display_name=tag&sort=semver&logo=github&label=release&color=FF1FD0" alt="Latest release"></a>
+  <a href="https://github.com/kpg-anon/mpvbridge/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep%20a%20changelog-25F4EE" alt="Changelog"></a>
   <a href="https://github.com/kpg-anon/mpvbridge/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/kpg-anon/mpvbridge/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI" alt="CI"></a>
   <img src="https://img.shields.io/badge/kotlin-2.4-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4">
   <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
