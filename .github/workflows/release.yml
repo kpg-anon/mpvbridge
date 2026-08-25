@@ -4,6 +4,10 @@ name: release
 #
 #   git tag -a v0.2.0 -m 'v0.2.0' && git push origin v0.2.0
 #
+# Releases are deliberately NOT marked as prereleases even while this is 0.x: GitHub's
+# /releases/latest/download/ endpoint skips prereleases, and the README's install line
+# depends on it. Beta status is carried by the 0.x version and said plainly in the README.
+#
 # Signing material comes from repository secrets and is written to a file only inside the runner.
 # Without those secrets the APK is built unsigned and the release is marked as such, so a fork can
 # still run this workflow without failing. See RELEASING.md.
@@ -145,5 +149,4 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "v${{ needs.verify.outputs.version }}" \
             --notes-file release-notes.md \
-            --prerelease \
             artifacts/*.apk artifacts/*.tar.gz artifacts/*.whl
