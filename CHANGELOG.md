@@ -9,6 +9,10 @@ version and are expected to match.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] - 2026-08-25
+
 ### Fixed
 
 - Tapping the media notification or the lockscreen card opens the app. The `MediaSession` carried
@@ -65,5 +69,6 @@ First release. Both halves — the Termux daemon and the Android companion app.
 - The app shows an empty list for the second or so before the socket connects — the daemon caches,
   the app does not.
 
-[Unreleased]: https://github.com/kpg-anon/mpvbridge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kpg-anon/mpvbridge/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/kpg-anon/mpvbridge/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kpg-anon/mpvbridge/releases/tag/v0.1.0
