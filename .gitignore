@@ -5,6 +5,7 @@ local.properties
 *.apk
 *.aab
 *.keystore
+*.jks
 !debug.keystore
 .cxx/
 

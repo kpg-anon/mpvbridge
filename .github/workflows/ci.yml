@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  daemon:
+    name: daemon (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test tooling
+        run: pip install pytest ruff
+      - name: Lint
+        run: ruff check src tests
+        working-directory: daemon
+      - name: Tests
+        run: python -m pytest -q
+        working-directory: daemon
+        env:
+          PYTHONPATH: src
+      - name: The package builds and its console script runs
+        run: |
+          pip install build
+          python -m build --outdir dist
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          /tmp/smoke/bin/mpvbridge --bridge-version
+        working-directory: daemon
+
+  app:
+    name: app (android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble debug
+        run: ./gradlew :app:assembleDebug --no-daemon
+        working-directory: android-app
+
+  shell:
+    name: shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Shellcheck
+        run: shellcheck -S error tools/dev.sh tools/agent.sh
+      # A stray CR makes Termux's bash die with `$'\r': command not found`, and editing these from
+      # Windows reintroduces one easily. .gitattributes pins them to LF; this proves it held.
+      - name: No CRLF in anything that runs on the phone
+        run: |
+          if grep -rlU $'\r' tools/ ; then
+            echo "::error::CRLF found in tools/ -- Termux's bash will not run these"
+            exit 1
+          fi
