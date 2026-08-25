@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.content.Context
 import android.util.Log
@@ -144,6 +144,6 @@ class FavoritesStore(context: Context) {
     companion object {
         const val TAG = "MpvFavorites"
         const val FILE_NAME = "favorites.json"
-        const val EXPORT_NAME = "termux-mpv-favorites.json"
+        const val EXPORT_NAME = "mpvbridge-favorites.json"
     }
 }

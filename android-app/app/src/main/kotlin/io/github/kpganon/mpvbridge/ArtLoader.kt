@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.util.Base64
 import android.util.Log

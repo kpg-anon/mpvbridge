@@ -43,6 +43,15 @@ _UNAVAILABLE_TITLES = frozenset(
 )
 
 
+def is_unavailable_title(title: str | None) -> bool:
+    """True when *title* is one of yt-dlp's placeholders for a video that no longer plays.
+
+    These reach us from two directions -- mpv's playlist, and yt-dlp's own output -- so the test
+    has to be shared, or one path would cache a placeholder the other treats as a dead entry.
+    """
+    return bool(title) and title.strip().lower() in _UNAVAILABLE_TITLES
+
+
 def _lookup(metadata: dict[str, Any] | None, keys: tuple[str, ...]) -> str | None:
     """Case-insensitive metadata lookup; mpv passes tag names through verbatim."""
     if not metadata:
@@ -96,8 +105,11 @@ class StateTracker:
         duration = props.get("duration")
         position = props.get("time-pos")
 
+        paused = bool(props.get("pause", True))
+        idle = bool(props.get("idle-active", False))
+
         return PlayerState(
-            playing=not bool(props.get("pause", True)) and not bool(props.get("idle-active", False)),
+            playing=not paused and not idle,
             title=title.strip(),
             artist=_lookup(metadata, _ARTIST_KEYS),
             album=_lookup(metadata, _ALBUM_KEYS),
@@ -106,7 +118,7 @@ class StateTracker:
             position=float(position) if isinstance(position, (int, float)) else 0.0,
             duration=float(duration) if isinstance(duration, (int, float)) else None,
             art=self._resolve_art(),
-            idle=bool(props.get("idle-active", False)),
+            idle=idle,
             url=self.path,
         )
 
@@ -125,7 +137,7 @@ def _resolve_entry(item: dict[str, Any], index: int) -> tuple[str, bool]:
     title = item.get("title")
     if isinstance(title, str) and title.strip():
         cleaned = title.strip()
-        if cleaned.lower() in _UNAVAILABLE_TITLES:
+        if is_unavailable_title(cleaned):
             return cleaned, True
         if is_remote and cleaned == filename:
             return cleaned, True

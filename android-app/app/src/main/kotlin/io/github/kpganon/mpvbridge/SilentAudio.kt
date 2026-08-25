@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.media.AudioAttributes
 import android.media.AudioFormat

@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.os.Bundle
 import android.os.Looper

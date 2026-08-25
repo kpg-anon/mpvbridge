@@ -3,16 +3,41 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// Version comes from gradle.properties so a release only has to change one line. versionCode is
+// derived rather than tracked by hand: Android needs it to increase on every install, and a
+// number nobody has to remember to bump cannot be forgotten.
+val appVersion: String = providers.gradleProperty("mpvbridge.version").get()
+val appVersionCode: Int = appVersion.split(".").let { parts ->
+    require(parts.size == 3) { "mpvbridge.version must be MAJOR.MINOR.PATCH, got '$appVersion'" }
+    val (major, minor, patch) = parts.map(String::toInt)
+    major * 10_000 + minor * 100 + patch
+}
+
+// Signing material is read from the environment, never from a file in the repo. Without it a
+// release build is simply unsigned, which is what a fork or a CI run without secrets gets.
+val keystorePath: String? = System.getenv("MPVBRIDGE_KEYSTORE")
+
 android {
-    namespace = "io.github.kpganon.termuxmpvcontrols"
+    namespace = "io.github.kpganon.mpvbridge"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.kpganon.termuxmpvcontrols"
+        applicationId = "io.github.kpganon.mpvbridge"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersion
+    }
+
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("MPVBRIDGE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MPVBRIDGE_KEY_ALIAS") ?: "mpvbridge"
+                keyPassword = System.getenv("MPVBRIDGE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildFeatures {
@@ -22,8 +47,11 @@ android {
 
     buildTypes {
         release {
+            // Media3 and the session service are reached reflectively in places; shrinking is not
+            // worth debugging on a project this size for the few hundred KB it would save.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

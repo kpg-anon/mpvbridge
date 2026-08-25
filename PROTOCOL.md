@@ -36,11 +36,16 @@ stays quiet during playback.
   "art": {"url": "https://i.ytimg.com/vi/<id>/maxresdefault.jpg",
           "fallbackUrl": "https://i.ytimg.com/vi/<id>/hqdefault.jpg"},
   "idle": false,
-  "url": "https://www.youtube.com/watch?v=<id>"
+  "url": "https://www.youtube.com/watch?v=<id>",
+  "source": {"url": "https://www.youtube.com/playlist?list=<id>", "title": "share"}
 }
 ```
 
 `url` is mpv's `path` for the current entry. The app needs it to star a track and replay it later.
+
+`source` is the playlist these entries came from, and is `null` when mpv was handed loose files.
+mpv rewrites `playlist-path` the moment a playlist is expanded, so the daemon carries the original
+alongside rather than reading it back out of mpv.
 
 `artist`, `album`, `duration` and `art` may be `null`. `art` is either the URL pair above or
 inline bytes for a local sidecar cover:
@@ -69,6 +74,23 @@ entry that is currently playing.
 
 `current` is informational. The authoritative current entry is `index` in the `state` message.
 
+### `library`
+
+Every playlist the daemon has cached, newest fetch first. Sent on connect, after `add-playlist`,
+`load-playlist` and `remove-playlist`, and on request.
+
+```json
+{"type": "library",
+ "playlists": [{"url": "https://www.youtube.com/playlist?list=<id>",
+                "title": "share", "count": 855, "fetched": 1755000000, "current": true}]}
+```
+
+`title` is what yt-dlp reported for the playlist, or `null` if it never has been fetched. `count`
+is how many entries the cache holds. `current` marks the one mpv is playing.
+
+This is the app's Library screen. Because every entry is already cached, tapping one starts
+playing it without a yt-dlp round trip.
+
 ### `bye`
 
 mpv exited; the bridge is shutting down.
@@ -79,14 +101,21 @@ mpv exited; the bridge is shutting down.
 
 ### `refresh`
 
-Progress of a `refresh-playlist`. `yt-dlp` on a large playlist takes many seconds, so the UI needs
-to know it started rather than looking frozen.
+Progress of anything that shells out to yt-dlp — `refresh-playlist`, `add-playlist`, and a
+`load-playlist` for a playlist that has never been fetched. They are one message type because from
+the app's side they are the same wait, and `yt-dlp` on a large playlist takes many seconds.
 
 ```json
-{"type": "refresh", "status": "running", "added": 0, "total": 0, "reason": null}
-{"type": "refresh", "status": "done", "added": 3, "total": 858, "reason": null}
-{"type": "refresh", "status": "error", "added": 0, "total": 0, "reason": "yt-dlp timed out"}
+{"type": "refresh", "status": "running", "added": 0, "total": 0, "reason": null,
+ "title": "share", "url": "https://www.youtube.com/playlist?list=<id>"}
+{"type": "refresh", "status": "done", "added": 3, "total": 858, "reason": null,
+ "title": "share", "url": "https://www.youtube.com/playlist?list=<id>"}
+{"type": "refresh", "status": "error", "added": 0, "total": 0, "reason": "yt-dlp timed out",
+ "title": null, "url": "https://www.youtube.com/playlist?list=<id>"}
 ```
+
+`title` and `url` name which playlist the progress is about. `title` is `null` until yt-dlp has
+reported one.
 
 ### `error`
 
@@ -129,6 +158,10 @@ it succeeds.
 | `unshuffle` | —                  | `playlist-unshuffle`                 |
 | `play-url` | `url`: string       | `loadfile <url> insert-next-play`    |
 | `refresh-playlist` | —           | re-reads the source with yt-dlp; see below |
+| `library`  | —                   | none; re-sends `library`             |
+| `add-playlist` | `url`: string   | none; resolves and caches it, then re-sends `library` |
+| `load-playlist` | `url`: string  | `loadlist <cached file> replace`     |
+| `remove-playlist` | `url`: string | none; drops it from the cache       |
 
 These are real mpv commands rather than simulated keypresses, so they do not depend on the user's
 `input.conf` and work when mpv has no terminal focus.
@@ -147,3 +180,16 @@ that flag and leaves shuffling to the app.
 cache, appends anything mpv does not already have, and reports progress through `refresh` messages.
 The source URL is remembered at startup because mpv rewrites `playlist-path` once a playlist is
 expanded.
+
+`add-playlist` runs the same fetch against a URL the daemon has never seen. The playlist's own name
+rides along on every entry of `--flat-playlist` output, so naming it costs no extra call — which is
+how a pasted link becomes "share" in the app.
+
+`load-playlist` switches mpv to a playlist in the library. Unlike `play-url` it *does* use
+`replace`, because it is a deliberate "play this instead" rather than a one-off insert. A playlist
+already in the cache is loaded from its local file with no yt-dlp call at all; one that is not is
+resolved first. It also clears `pause`, since `stop` from the notification is a pause and a fresh
+load would otherwise sit there silently.
+
+Only one yt-dlp-backed job runs at a time; a second is refused rather than queued, because two
+would fight over the same cache files.

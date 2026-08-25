@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from mpvbridge import bridge as bridge_module
 from mpvbridge.bridge import Bridge
 from mpvbridge.state import OBSERVED_PROPERTIES

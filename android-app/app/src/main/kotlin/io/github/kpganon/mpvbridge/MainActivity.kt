@@ -1,7 +1,9 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -10,15 +12,20 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.media3.common.MediaItem
@@ -31,11 +38,11 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import io.github.kpganon.termuxmpvcontrols.databinding.ActivityMainBinding
+import io.github.kpganon.mpvbridge.databinding.ActivityMainBinding
 import java.io.File
 
 /**
- * Drawer over four views: Now Playing, Current Playlist, Favorites and Settings, with a
+ * Drawer over five views: Now Playing, Library, Current Playlist, Favorites and Settings, with a
  * mini-player pinned to the bottom.
  *
  * Plain views and ViewBinding rather than Compose: the UI is lists and a hero image, and this
@@ -44,7 +51,7 @@ import java.io.File
 @UnstableApi
 class MainActivity : AppCompatActivity() {
 
-    private enum class Screen { NOW_PLAYING, PLAYLIST, FAVORITES, SETTINGS }
+    private enum class Screen { NOW_PLAYING, LIBRARY, PLAYLIST, FAVORITES, SETTINGS }
 
     private lateinit var views: ActivityMainBinding
     private lateinit var settings: Settings
@@ -54,12 +61,27 @@ class MainActivity : AppCompatActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
     private val ticker = Handler(Looper.getMainLooper())
+    private val autoStartTimer = Handler(Looper.getMainLooper())
     private var screen = Screen.NOW_PLAYING
+
+    /** Last thing the service told us about the daemon; null until it has told us anything. */
+    private var bridgeConnected: Boolean? = null
+
+    /** One Termux launch per visit, however many times the status flaps. */
+    private var autoStartDone = false
+
+    /** Set while the Termux permission dialog is up, so a grant continues what asked for it. */
+    private var launchAfterPermission = false
 
     /** Playlist rows actually shown, mapped back to their real index in mpv's playlist. */
     private val playlistRows = mutableListOf<Row>()
     private val favoriteRows = mutableListOf<FavoritesStore.Favorite>()
+    private val libraryRows = mutableListOf<Protocol.SavedPlaylist>()
 
+    /** Every playlist row, before the filter box narrows it down. */
+    private val allPlaylistRows = mutableListOf<Row>()
+
+    private var hiddenUnavailable = 0
     private var timelineSize = -1
     private var currentIndex = -1
     private var artworkFingerprint = 0
@@ -70,10 +92,28 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private lateinit var favoritesAdapter: FavoritesAdapter
+    private lateinit var libraryAdapter: LibraryAdapter
 
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (!granted) toast(getString(R.string.notifications_denied))
+        }
+
+    /**
+     * `com.termux.permission.RUN_COMMAND` is declared by Termux as a *dangerous* permission, so
+     * it is never granted at install time however plainly this app requests it in its manifest.
+     * Without this the Start button and auto-start both fail silently.
+     */
+    private val requestTermuxPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val wanted = launchAfterPermission
+            launchAfterPermission = false
+            if (!granted) {
+                views.settingsView.launchStatus.text = getString(R.string.launch_no_permission)
+                toast(getString(R.string.launch_no_permission))
+                return@registerForActivityResult
+            }
+            if (wanted) startInTermux()
         }
 
     private val exportFavorites =
@@ -100,8 +140,13 @@ class MainActivity : AppCompatActivity() {
             command: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (command.customAction == MpvSessionService.Commands.REFRESH_STATUS) {
-                showRefresh(args)
+            when (command.customAction) {
+                MpvSessionService.Commands.REFRESH_STATUS -> showRefresh(args)
+                MpvSessionService.Commands.LIBRARY_STATUS ->
+                    showLibrary(Protocol.decodeLibrary(args.getString("playlists")))
+
+                MpvSessionService.Commands.BRIDGE_STATUS ->
+                    onBridgeStatus(args.getBoolean("connected"))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
@@ -120,12 +165,20 @@ class MainActivity : AppCompatActivity() {
         wireDrawer()
         wireNowPlaying()
         wireLists()
+        wireLibrary()
         wireMiniPlayer()
         wireSettings()
         show(Screen.NOW_PLAYING)
 
         requestNotificationPermissionIfNeeded()
         startService(Intent(this, MpvSessionService::class.java))
+        handleSharedLink(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSharedLink(intent)
     }
 
     override fun onStart() {
@@ -140,6 +193,10 @@ class MainActivity : AppCompatActivity() {
             controller = ready
             ready.addListener(playerListener)
             render(ready, rebuildList = true)
+            // The service has been running since onCreate, so everything it broadcast before now
+            // was sent to nobody. Ask for the current picture.
+            sendCustom(MpvSessionService.Commands.REQUEST_LIBRARY)
+            scheduleAutoStartCheck()
         }, MoreExecutors.directExecutor())
     }
 
@@ -154,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        autoStartTimer.removeCallbacksAndMessages(null)
         controller?.removeListener(playerListener)
         controllerFuture?.let(MediaController::releaseFuture)
         controllerFuture = null
@@ -179,6 +237,7 @@ class MainActivity : AppCompatActivity() {
         views.navigationView.setNavigationItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_now_playing -> show(Screen.NOW_PLAYING)
+                R.id.nav_library -> show(Screen.LIBRARY)
                 R.id.nav_playlist -> show(Screen.PLAYLIST)
                 R.id.nav_favorites -> show(Screen.FAVORITES)
                 R.id.nav_settings -> show(Screen.SETTINGS)
@@ -226,6 +285,7 @@ class MainActivity : AppCompatActivity() {
                 listProgress.visibility = View.VISIBLE
                 sendCustom(MpvSessionService.Commands.REFRESH_PLAYLIST)
             }
+            listFilter.doAfterTextChanged { applyPlaylistFilter() }
         }
 
         with(views.favoritesView) {
@@ -241,10 +301,24 @@ class MainActivity : AppCompatActivity() {
                 }
                 true
             }
+            listFilter.doAfterTextChanged { refreshFavorites() }
             // Favorites are a local list; shuffling and refreshing belong to mpv's playlist.
             listShuffle.visibility = View.GONE
             listRefresh.visibility = View.GONE
         }
+    }
+
+    private fun wireLibrary() = with(views.libraryView) {
+        libraryAdapter = LibraryAdapter()
+        libraryList.adapter = libraryAdapter
+        libraryList.setOnItemClickListener { _, _, position, _ ->
+            libraryRows.getOrNull(position)?.let(::loadPlaylist)
+        }
+        libraryList.setOnItemLongClickListener { _, _, position, _ ->
+            libraryRows.getOrNull(position)?.let(::confirmRemovePlaylist)
+            true
+        }
+        libraryAdd.setOnClickListener { promptForPlaylist(clipboardPlaylistUrl()) }
     }
 
     private fun wireMiniPlayer() {
@@ -262,6 +336,13 @@ class MainActivity : AppCompatActivity() {
         settingHideUnavailable.isChecked = settings.hideUnavailable
         settingRefreshOnLaunch.isChecked = settings.refreshOnLaunch
         settingKeepAlive.isChecked = settings.keepAliveEnabled
+        settingAutoStart.isChecked = settings.autoStart
+        settingResumeLast.isChecked = settings.resumeLastPlaylist
+
+        settingAutoStart.setOnCheckedChangeListener { _, checked -> settings.autoStart = checked }
+        settingResumeLast.setOnCheckedChangeListener { _, checked ->
+            settings.resumeLastPlaylist = checked
+        }
 
         settingHideUnavailable.setOnCheckedChangeListener { _, checked ->
             settings.hideUnavailable = checked
@@ -287,7 +368,8 @@ class MainActivity : AppCompatActivity() {
             append("\nTermux ")
             append(if (TermuxLauncher.isInstalled(this@MainActivity)) "installed" else "not found")
         }
-        favoritesStatus.text = getString(R.string.favorites_subtitle, favorites.all().size)
+        favoritesStatus.text =
+            plural(R.plurals.favorites_subtitle, favorites.all().size, favorites.all().size)
     }
 
     private fun persistConnectionSettings() = with(views.settingsView) {
@@ -342,10 +424,172 @@ class MainActivity : AppCompatActivity() {
         show(Screen.NOW_PLAYING)
     }
 
+    // -- library -----------------------------------------------------------------------------
+
+    private fun loadPlaylist(playlist: Protocol.SavedPlaylist) {
+        if (controller == null) {
+            toast(getString(R.string.library_needs_daemon))
+            return
+        }
+        views.libraryView.libraryProgress.visibility = View.VISIBLE
+        sendCustom(
+            MpvSessionService.Commands.LOAD_PLAYLIST,
+            Bundle().apply { putString("url", playlist.url) },
+        )
+        toast(getString(R.string.library_loading, playlist.displayTitle))
+        show(Screen.NOW_PLAYING)
+    }
+
+    private fun confirmRemovePlaylist(playlist: Protocol.SavedPlaylist) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.library_remove_title, playlist.displayTitle))
+            .setMessage(R.string.library_remove_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.library_remove_button) { _, _ ->
+                sendCustom(
+                    MpvSessionService.Commands.REMOVE_PLAYLIST,
+                    Bundle().apply { putString("url", playlist.url) },
+                )
+            }
+            .show()
+    }
+
+    /**
+     * Ask for a playlist link and hand it to the daemon, which names it with yt-dlp.
+     *
+     * The name is not guessed here: only yt-dlp knows a link is called "share", and it is the
+     * same call that fills the cache, so asking for the name costs nothing extra.
+     */
+    private fun promptForPlaylist(prefill: String?) {
+        val input = EditText(this).apply {
+            setHint(R.string.library_add_hint)
+            setText(prefill.orEmpty())
+            setSingleLine()
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.library_add_title)
+            .setMessage(R.string.library_add_message)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.library_add_button) { _, _ ->
+                addPlaylist(input.text.toString().trim())
+            }
+            .show()
+    }
+
+    private fun addPlaylist(url: String) {
+        if (!looksLikePlaylist(url)) {
+            toast(getString(R.string.library_not_a_playlist))
+            return
+        }
+        if (controller == null) {
+            toast(getString(R.string.library_needs_daemon))
+            return
+        }
+        views.libraryView.libraryProgress.visibility = View.VISIBLE
+        sendCustom(
+            MpvSessionService.Commands.ADD_PLAYLIST,
+            Bundle().apply { putString("url", url) },
+        )
+        show(Screen.LIBRARY)
+    }
+
+    /** A shared link arrives as loose text with a URL somewhere in it. */
+    private fun handleSharedLink(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        val url = shared.split(Regex("\\s+")).firstOrNull(::looksLikePlaylist) ?: run {
+            toast(getString(R.string.library_not_a_playlist))
+            return
+        }
+        // Consume it, so a rotation does not offer the same link again.
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.library_add_title)
+            .setMessage(getString(R.string.library_shared, url))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.library_add_button) { _, _ -> addPlaylist(url) }
+            .show()
+    }
+
+    private fun clipboardPlaylistUrl(): String? {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
+        return text?.takeIf(::looksLikePlaylist)
+    }
+
+    private fun looksLikePlaylist(candidate: String): Boolean =
+        candidate.startsWith("http") && candidate.contains("list=")
+
+    // -- launching ---------------------------------------------------------------------------
+
+    /**
+     * Start the daemon in Termux when nothing is listening, so opening the app is enough.
+     *
+     * A short wait first: the socket is usually already up, and the service needs a moment to
+     * report either way. Doing this from the activity rather than the service is deliberate --
+     * Android 12+ refuses a foreground-service start from the background, and the app being open
+     * is exactly what makes this call legal.
+     */
+    private fun scheduleAutoStartCheck() {
+        if (!settings.autoStart || autoStartDone) return
+        autoStartTimer.removeCallbacksAndMessages(null)
+        autoStartTimer.postDelayed({
+            if (bridgeConnected == true || autoStartDone) return@postDelayed
+            if (!TermuxLauncher.isInstalled(this)) {
+                Log.i(TAG, "nothing on ${settings.host}:${settings.port} and Termux is not here")
+                return@postDelayed
+            }
+            autoStartDone = true
+            Log.i(TAG, "nothing listening; starting the daemon in Termux")
+            toast(getString(R.string.launch_auto, settings.host, settings.port))
+            startInTermux()
+        }, AUTO_START_DELAY_MS)
+    }
+
+    /**
+     * Say so when Termux accepted the request but no daemon appeared.
+     *
+     * Termux refuses a plugin command asynchronously -- `startForegroundService` returns fine and
+     * the refusal arrives later as a Termux notification -- so the only thing this app can
+     * observe is that the socket never came up. Silence here is the failure that is hardest to
+     * diagnose, and the cause is almost always the same one.
+     */
+    private fun watchForLaunchFailure() {
+        autoStartTimer.postDelayed({
+            if (bridgeConnected == true) return@postDelayed
+            val message = getString(R.string.launch_no_socket, settings.port)
+            Log.w(TAG, message)
+            views.settingsView.launchStatus.text = message
+            toast(message)
+        }, LAUNCH_GRACE_MS)
+    }
+
+    private fun onBridgeStatus(connected: Boolean) {
+        bridgeConnected = connected
+        // Deliberately not rescheduling on a disconnect. BridgeClient retries about once a
+        // second at first, and each retry reports a status -- pushing the check back every time
+        // would mean it never ran.
+        if (connected) autoStartTimer.removeCallbacksAndMessages(null)
+        renderSubtitle()
+    }
+
     private fun startInTermux() {
         persistConnectionSettings()
+        if (TermuxLauncher.isInstalled(this) && !TermuxLauncher.hasPermission(this)) {
+            // Ask the first time it is actually needed rather than on first launch, so the
+            // dialog arrives with a reason the user can see.
+            launchAfterPermission = true
+            requestTermuxPermission.launch(TermuxLauncher.PERMISSION)
+            return
+        }
         val message = when (val result = TermuxLauncher.run(this, settings.launchCommand)) {
-            TermuxLauncher.Result.Started -> getString(R.string.launch_started)
+            TermuxLauncher.Result.Started -> {
+                watchForLaunchFailure()
+                getString(R.string.launch_started)
+            }
             TermuxLauncher.Result.TermuxMissing -> getString(R.string.launch_no_termux)
             TermuxLauncher.Result.PermissionMissing -> getString(R.string.launch_no_permission)
             is TermuxLauncher.Result.Failed -> getString(R.string.launch_failed, result.reason)
@@ -381,6 +625,7 @@ class MainActivity : AppCompatActivity() {
     private fun show(target: Screen) {
         screen = target
         views.nowPlayingView.root.visibility = visibleIf(target == Screen.NOW_PLAYING)
+        views.libraryView.root.visibility = visibleIf(target == Screen.LIBRARY)
         views.playlistView.root.visibility = visibleIf(target == Screen.PLAYLIST)
         views.favoritesView.root.visibility = visibleIf(target == Screen.FAVORITES)
         views.settingsView.root.visibility = visibleIf(target == Screen.SETTINGS)
@@ -388,6 +633,7 @@ class MainActivity : AppCompatActivity() {
         views.toolbar.title = getString(
             when (target) {
                 Screen.NOW_PLAYING -> R.string.nav_now_playing
+                Screen.LIBRARY -> R.string.nav_library
                 Screen.PLAYLIST -> R.string.nav_playlist
                 Screen.FAVORITES -> R.string.nav_favorites
                 Screen.SETTINGS -> R.string.nav_settings
@@ -395,6 +641,23 @@ class MainActivity : AppCompatActivity() {
         )
         if (target == Screen.FAVORITES) refreshFavorites()
         if (target != Screen.SETTINGS) persistConnectionSettings()
+        renderSubtitle()
+    }
+
+    /**
+     * The toolbar's second line: which playlist is loaded, or that nothing is listening.
+     *
+     * The playing playlist is whichever library row the daemon flagged `current`, so naming it
+     * costs no extra message.
+     */
+    private fun renderSubtitle() {
+        views.toolbar.subtitle = when {
+            bridgeConnected == false -> getString(R.string.waiting_for_mpv)
+            screen == Screen.NOW_PLAYING || screen == Screen.PLAYLIST ->
+                libraryRows.firstOrNull { it.current }?.displayTitle.orEmpty()
+
+            else -> ""
+        }
     }
 
     private fun visibleIf(condition: Boolean) = if (condition) View.VISIBLE else View.GONE
@@ -413,7 +676,10 @@ class MainActivity : AppCompatActivity() {
         views.miniTitle.text = title
 
         val status = if (count == 0) {
-            getString(R.string.waiting_for_mpv)
+            // A daemon that is up but idle is not the same as no daemon at all, and the fix for
+            // each is different: pick a playlist, versus start mpvbridge.
+            if (bridgeConnected == true) getString(R.string.nothing_loaded)
+            else getString(R.string.waiting_for_mpv)
         } else {
             val state = getString(if (player.playWhenReady) R.string.playing else R.string.paused)
             getString(R.string.playlist_status, state, index + 1, count)
@@ -448,7 +714,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rebuildPlaylist(player: Player) {
-        playlistRows.clear()
+        allPlaylistRows.clear()
         val hide = settings.hideUnavailable
         var hidden = 0
         for (i in 0 until player.mediaItemCount) {
@@ -461,7 +727,7 @@ class MainActivity : AppCompatActivity() {
                 hidden++
                 continue
             }
-            playlistRows.add(
+            allPlaylistRows.add(
                 Row(
                     mediaIndex = i,
                     title = item.mediaMetadata.title?.toString().orEmpty(),
@@ -469,25 +735,79 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         }
+        hiddenUnavailable = hidden
+        applyPlaylistFilter()
+    }
+
+    /** Narrow the playlist to the filter box. 855 rows is a lot to scroll past. */
+    private fun applyPlaylistFilter() {
+        val query = views.playlistView.listFilter.text.toString().trim()
+        playlistRows.clear()
+        if (query.isEmpty()) {
+            playlistRows.addAll(allPlaylistRows)
+        } else {
+            allPlaylistRows.filterTo(playlistRows) { it.title.contains(query, ignoreCase = true) }
+        }
+        playlistAdapter.notifyDataSetChanged()
+
         views.playlistView.listSubtitle.text = when {
-            playlistRows.isEmpty() -> ""
-            hidden > 0 -> getString(R.string.playlist_subtitle_hidden, playlistRows.size, hidden)
-            else -> getString(R.string.playlist_subtitle, playlistRows.size)
+            allPlaylistRows.isEmpty() -> ""
+            query.isNotEmpty() ->
+                getString(R.string.filter_subtitle, playlistRows.size, allPlaylistRows.size)
+
+            hiddenUnavailable > 0 -> plural(
+                R.plurals.playlist_subtitle_hidden,
+                playlistRows.size,
+                playlistRows.size,
+                hiddenUnavailable,
+            )
+
+            else -> plural(R.plurals.playlist_subtitle, playlistRows.size, playlistRows.size)
         }
         views.playlistView.listEmpty.visibility = visibleIf(playlistRows.isEmpty())
-        views.playlistView.listEmpty.text = getString(R.string.playlist_empty)
+        views.playlistView.listEmpty.text = getString(
+            if (allPlaylistRows.isNotEmpty()) R.string.filter_no_matches else R.string.playlist_empty
+        )
     }
 
     private fun refreshFavorites() {
+        val all = favorites.all()
+        val query = views.favoritesView.listFilter.text.toString().trim()
         favoriteRows.clear()
-        favoriteRows.addAll(favorites.all())
+        if (query.isEmpty()) {
+            favoriteRows.addAll(all)
+        } else {
+            all.filterTo(favoriteRows) {
+                it.title.contains(query, ignoreCase = true) ||
+                    it.artist?.contains(query, ignoreCase = true) == true
+            }
+        }
         favoritesAdapter.notifyDataSetChanged()
-        views.favoritesView.listSubtitle.text =
-            getString(R.string.favorites_subtitle, favoriteRows.size)
+
+        views.favoritesView.listSubtitle.text = if (query.isEmpty()) {
+            plural(R.plurals.favorites_subtitle, all.size, all.size)
+        } else {
+            getString(R.string.filter_subtitle, favoriteRows.size, all.size)
+        }
         views.favoritesView.listEmpty.visibility = visibleIf(favoriteRows.isEmpty())
-        views.favoritesView.listEmpty.text = getString(R.string.favorites_empty)
+        views.favoritesView.listEmpty.text = getString(
+            if (all.isNotEmpty()) R.string.filter_no_matches else R.string.favorites_empty
+        )
         views.settingsView.favoritesStatus.text =
-            getString(R.string.favorites_subtitle, favoriteRows.size)
+            plural(R.plurals.favorites_subtitle, all.size, all.size)
+    }
+
+    private fun showLibrary(playlists: List<Protocol.SavedPlaylist>) {
+        libraryRows.clear()
+        libraryRows.addAll(playlists)
+        libraryAdapter.notifyDataSetChanged()
+        with(views.libraryView) {
+            librarySubtitle.text =
+                plural(R.plurals.library_subtitle, libraryRows.size, libraryRows.size)
+            libraryEmpty.visibility = visibleIf(libraryRows.isEmpty())
+            libraryProgress.visibility = View.GONE
+        }
+        renderSubtitle()
     }
 
     private fun renderFavoriteIcon() {
@@ -533,19 +853,36 @@ class MainActivity : AppCompatActivity() {
 
     private fun showRefresh(args: Bundle) {
         val status = args.getString("status").orEmpty()
+        val name = args.getString("title")
+        val kind = args.getString("kind") ?: Protocol.KIND_RECHECK
         views.playlistView.listProgress.visibility = visibleIf(status == "running")
+        views.libraryView.libraryProgress.visibility = visibleIf(status == "running")
         val message = when (status) {
-            "running" -> getString(R.string.refresh_running)
-            "done" -> {
-                val added = args.getInt("added")
-                if (added > 0) getString(R.string.refresh_added, added)
-                else getString(R.string.refresh_up_to_date)
+            "running" ->
+                if (name.isNullOrBlank()) getString(R.string.refresh_running)
+                else getString(R.string.refresh_running_named, name)
+
+            "done" -> when (kind) {
+                Protocol.KIND_ADD -> {
+                    val total = args.getInt("total")
+                    plural(R.plurals.library_added_count, total, name.orEmpty(), total)
+                }
+                // Tapping a playlist already said "Loading share…"; saying it again adds nothing.
+                Protocol.KIND_LOAD -> ""
+                else -> {
+                    val added = args.getInt("added")
+                    if (added > 0) plural(R.plurals.refresh_added, added, added)
+                    else getString(R.string.refresh_up_to_date)
+                }
             }
 
             else -> getString(R.string.refresh_failed, args.getString("reason") ?: status)
         }
-        toast(message)
+        if (message.isNotEmpty()) toast(message)
     }
+
+    private fun plural(id: Int, quantity: Int, vararg args: Any): String =
+        resources.getQuantityString(id, quantity, *args)
 
     /** Media3 does not push position updates, so the seek bar is driven from here while visible. */
     private fun scheduleTick() {
@@ -641,7 +978,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private inner class LibraryAdapter : BaseAdapter() {
+        override fun getCount(): Int = libraryRows.size
+        override fun getItem(position: Int): Protocol.SavedPlaylist = libraryRows[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val view = convertView ?: LayoutInflater.from(parent.context)
+                .inflate(R.layout.row_library, parent, false)
+            val playlist = libraryRows[position]
+
+            val title = view.findViewById<TextView>(R.id.libraryTitle)
+            title.text = playlist.displayTitle
+            title.setTextColor(
+                ContextCompat.getColor(
+                    this@MainActivity,
+                    if (playlist.current) R.color.accent else R.color.text_primary
+                )
+            )
+            view.findViewById<TextView>(R.id.librarySubtitleRow).text = when {
+                playlist.count == 0 -> getString(R.string.library_row_unnamed)
+                playlist.current ->
+                    plural(R.plurals.library_row_playing, playlist.count, playlist.count)
+
+                else -> plural(R.plurals.library_row_subtitle, playlist.count, playlist.count)
+            }
+            view.findViewById<ImageView>(R.id.libraryIcon).setImageResource(
+                if (playlist.current) R.drawable.ic_now_playing else R.drawable.ic_playlist
+            )
+            view.setBackgroundResource(if (playlist.current) R.drawable.bg_row_current else 0)
+            return view
+        }
+    }
+
     private companion object {
+        const val TAG = "MpvMain"
         const val TICK_MS = 500L
+
+        /** Long enough for a daemon that is already up to answer, short enough not to feel stuck. */
+        const val AUTO_START_DELAY_MS = 2500L
+
+        /** mpv, yt-dlp and a Python start-up need a few seconds before the socket exists. */
+        const val LAUNCH_GRACE_MS = 12_000L
     }
 }

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "termux-mpv-controls"
-version = "0.1.0"
-description = "Bridges mpv's JSON IPC socket in Termux to the Termux mpv Controls companion app"
+name = "mpvbridge"
+dynamic = ["version"]
+description = "Bridges mpv's JSON IPC socket in Termux to the mpvbridge companion app"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -14,6 +14,14 @@ dependencies = []
 
 [project.scripts]
 mpvbridge = "mpvbridge.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/kpg-anon/mpvbridge"
+Changelog = "https://github.com/kpg-anon/mpvbridge/blob/main/CHANGELOG.md"
+
+# One version for the daemon half, read straight out of the package.
+[tool.hatch.version]
+path = "src/mpvbridge/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mpvbridge"]

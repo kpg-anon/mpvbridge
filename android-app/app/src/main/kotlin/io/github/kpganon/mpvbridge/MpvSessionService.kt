@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.content.Intent
 import android.os.Bundle
@@ -42,6 +42,9 @@ class MpvSessionService : MediaSessionService() {
     private lateinit var settings: Settings
     private var session: MediaSession? = null
 
+    /** One resume attempt per connection, so a reconnect mid-listen never reloads over you. */
+    private var resumeAttempted = false
+
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
@@ -59,6 +62,7 @@ class MpvSessionService : MediaSessionService() {
             stopSelf()
         }
         bridge.onConnected = {
+            resumeAttempted = false
             if (settings.refreshOnLaunch) {
                 Log.i(TAG, "checking the source playlist for new tracks")
                 bridge.send(Protocol.refreshPlaylist())
@@ -67,6 +71,8 @@ class MpvSessionService : MediaSessionService() {
 
         scope.launch { observeBridge() }
         scope.launch { observeRefresh() }
+        scope.launch { observeLibrary() }
+        scope.launch { observeStatus() }
         bridge.start()
     }
 
@@ -80,6 +86,11 @@ class MpvSessionService : MediaSessionService() {
             // stopping it while paused would hand the media button session back to whatever app
             // last played audio, and the headset could no longer resume us.
             if (connected && settings.keepAliveEnabled) silentAudio.start() else silentAudio.stop()
+
+            if (connected && bridge.hasState.value) {
+                state.sourceUrl?.let { settings.lastPlaylistUrl = it }
+                resumeLastPlaylistIfIdle(state)
+            }
 
             val tracks = buildTracks(state, playlist)
             val artData = artLoader.load(state.art)
@@ -95,16 +106,71 @@ class MpvSessionService : MediaSessionService() {
         }
     }
 
+    /**
+     * Play what was playing last time, when the daemon has come up with nothing loaded.
+     *
+     * That is the normal state for a daemon the app started itself: `mpvbridge` with no media
+     * argument starts mpv idle and waits to be told what to play.
+     */
+    private fun resumeLastPlaylistIfIdle(state: Protocol.State) {
+        if (resumeAttempted || !settings.resumeLastPlaylist) return
+        resumeAttempted = true
+        if (state.count > 0 || state.sourceUrl != null) return
+        val url = settings.lastPlaylistUrl ?: return
+        Log.i(TAG, "mpv is idle; loading the last playlist")
+        bridge.send(Protocol.loadPlaylist(url))
+    }
+
+    private suspend fun observeLibrary() {
+        bridge.library.collectLatest { broadcastLibrary() }
+    }
+
+    private fun broadcastLibrary() {
+        broadcast(
+            Commands.LIBRARY_STATUS,
+            Bundle().apply {
+                putString("playlists", Protocol.encodeLibrary(bridge.library.value))
+            },
+        )
+    }
+
+    /**
+     * Tell the activity whether the daemon is reachable, so it can offer to start it in Termux.
+     *
+     * The activity cannot infer this from the [androidx.media3.common.Player]: a daemon that is
+     * up but idle looks exactly like no daemon at all -- an empty timeline, nothing playing.
+     */
+    private suspend fun observeStatus() {
+        bridge.status.collectLatest { broadcastStatus() }
+    }
+
+    private fun broadcastStatus() {
+        broadcast(
+            Commands.BRIDGE_STATUS,
+            Bundle().apply {
+                putBoolean("connected", bridge.status.value == BridgeClient.Status.CONNECTED)
+                putString("mpv", bridge.mpvVersion.value)
+            },
+        )
+    }
+
+    private fun broadcast(action: String, args: Bundle) {
+        session?.broadcastCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
+    }
+
     private suspend fun observeRefresh() {
         bridge.refresh.collectLatest { refresh ->
             val current = refresh ?: return@collectLatest
-            session?.broadcastCustomCommand(
-                SessionCommand(Commands.REFRESH_STATUS, Bundle.EMPTY),
+            broadcast(
+                Commands.REFRESH_STATUS,
                 Bundle().apply {
                     putString("status", current.status)
                     putInt("added", current.added)
                     putInt("total", current.total)
                     putString("reason", current.reason)
+                    putString("title", current.title)
+                    putString("url", current.url)
+                    putString("kind", current.kind)
                 },
             )
         }
@@ -190,6 +256,12 @@ class MpvSessionService : MediaSessionService() {
                 .add(SessionCommand(Commands.REFRESH_PLAYLIST, Bundle.EMPTY))
                 .add(SessionCommand(Commands.PLAY_URL, Bundle.EMPTY))
                 .add(SessionCommand(Commands.REFRESH_STATUS, Bundle.EMPTY))
+                .add(SessionCommand(Commands.ADD_PLAYLIST, Bundle.EMPTY))
+                .add(SessionCommand(Commands.LOAD_PLAYLIST, Bundle.EMPTY))
+                .add(SessionCommand(Commands.REMOVE_PLAYLIST, Bundle.EMPTY))
+                .add(SessionCommand(Commands.REQUEST_LIBRARY, Bundle.EMPTY))
+                .add(SessionCommand(Commands.LIBRARY_STATUS, Bundle.EMPTY))
+                .add(SessionCommand(Commands.BRIDGE_STATUS, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -210,6 +282,28 @@ class MpvSessionService : MediaSessionService() {
                 Commands.PLAY_URL -> args.getString("url")
                     ?.takeIf { it.isNotBlank() }
                     ?.let { bridge.send(Protocol.playUrl(it)) }
+
+                Commands.REQUEST_LIBRARY -> {
+                    // The activity connects to the session long after the service started, so it
+                    // has missed every broadcast up to now. Answer from what we already hold
+                    // before asking the daemon for anything.
+                    broadcastStatus()
+                    broadcastLibrary()
+                    bridge.send(Protocol.library())
+                }
+                Commands.ADD_PLAYLIST -> withUrl(args) { bridge.send(Protocol.addPlaylist(it)) }
+                Commands.REMOVE_PLAYLIST -> withUrl(args) {
+                    if (it == settings.lastPlaylistUrl) settings.lastPlaylistUrl = null
+                    bridge.send(Protocol.removePlaylist(it))
+                }
+
+                Commands.LOAD_PLAYLIST -> withUrl(args) {
+                    // Remember it now rather than waiting for the daemon to echo a source back,
+                    // so a load that is still resolving still survives the app being reopened.
+                    settings.lastPlaylistUrl = it
+                    resumeAttempted = true
+                    bridge.send(Protocol.loadPlaylist(it))
+                }
 
                 else -> return Futures.immediateFuture(
                     SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
@@ -234,6 +328,10 @@ class MpvSessionService : MediaSessionService() {
             return false
         }
 
+        private inline fun withUrl(args: Bundle, action: (String) -> Unit) {
+            args.getString("url")?.takeIf { it.isNotBlank() }?.let(action)
+        }
+
         @Suppress("DEPRECATION")
         private fun keyEventOf(intent: Intent): KeyEvent? =
             if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -245,15 +343,25 @@ class MpvSessionService : MediaSessionService() {
 
     /** Custom session commands, for the things Media3's Player interface has no concept of. */
     object Commands {
-        private const val PREFIX = "io.github.kpganon.termuxmpvcontrols."
+        private const val PREFIX = "io.github.kpganon.mpvbridge."
 
         const val SHUFFLE = PREFIX + "SHUFFLE"
         const val UNSHUFFLE = PREFIX + "UNSHUFFLE"
         const val REFRESH_PLAYLIST = PREFIX + "REFRESH_PLAYLIST"
         const val PLAY_URL = PREFIX + "PLAY_URL"
+        const val ADD_PLAYLIST = PREFIX + "ADD_PLAYLIST"
+        const val LOAD_PLAYLIST = PREFIX + "LOAD_PLAYLIST"
+        const val REMOVE_PLAYLIST = PREFIX + "REMOVE_PLAYLIST"
+        const val REQUEST_LIBRARY = PREFIX + "REQUEST_LIBRARY"
 
-        /** Service to controller: progress of a running refresh. */
+        /** Service to controller: progress of a running playlist fetch. */
         const val REFRESH_STATUS = PREFIX + "REFRESH_STATUS"
+
+        /** Service to controller: the saved playlists the daemon knows about. */
+        const val LIBRARY_STATUS = PREFIX + "LIBRARY_STATUS"
+
+        /** Service to controller: whether the daemon is reachable at all. */
+        const val BRIDGE_STATUS = PREFIX + "BRIDGE_STATUS"
     }
 
     companion object {

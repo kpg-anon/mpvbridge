@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 #
-# Dev deploy agent for termux-mpv-controls. Run this once inside Termux and leave it running:
+# Dev deploy agent for mpvbridge. Run this once inside Termux and leave it running:
 #
-#   bash /sdcard/Download/termux-mpv-controls/agent.sh
+#   bash /sdcard/Download/mpvbridge/agent.sh
 #
 # It watches shared storage for a trigger file dropped by tools/dev.sh on the PC, then redeploys
 # and restarts the daemon. This exists because the PC has no way to run a command inside Termux:
@@ -14,8 +14,8 @@
 
 set -uo pipefail
 
-DEVICE_DIR="/sdcard/Download/termux-mpv-controls"
-INSTALL_DIR="$HOME/termux-mpv-controls"
+DEVICE_DIR="/sdcard/Download/mpvbridge"
+INSTALL_DIR="$HOME/mpvbridge"
 TRIGGER="$DEVICE_DIR/deploy.trigger"
 ZIP="$DEVICE_DIR/daemon.zip"
 ARGS_FILE="$DEVICE_DIR/run.args"
@@ -102,13 +102,22 @@ deploy() {
     fi
     log "unpacked $(find "$INSTALL_DIR/src" -name '*.py' | wc -l) python files"
 
+    # The companion app starts the daemon by running `mpvbridge` off PATH, which is the pip
+    # installed copy in site-packages -- not this directory. Unpacking alone would leave the app
+    # launching the previous version while the daemon started here ran the new one.
+    if pip install --quiet --no-deps --force-reinstall "$INSTALL_DIR" >>"$AGENT_LOG" 2>&1; then
+        log 'installed; the mpvbridge on PATH is now this code'
+    else
+        log "pip install failed -- the app will keep launching the previously installed version"
+    fi
+
     start_daemon
 }
 
 trap 'log "agent stopping"; stop_daemon; exit 0' INT TERM
 
 log "agent watching $TRIGGER (poll ${POLL_SECONDS}s)"
-log "termux-mpv-controls dev agent ready"
+log "mpvbridge dev agent ready"
 
 while true; do
     if [ -f "$TRIGGER" ]; then

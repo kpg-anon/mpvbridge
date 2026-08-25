@@ -3,6 +3,10 @@
 Everything not consumed by the ``--bridge-*`` options below is handed to mpv untouched, so
 ``mpvbridge --no-video 'https://youtube.com/playlist?list=...'`` behaves exactly like the same mpv
 invocation, plus a media session on the phone.
+
+Given no media argument at all, mpv is started idle and waits for the app to say what to play.
+That is the path the companion app uses: it starts this itself, so nothing has to be typed in
+Termux.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ from .server import BridgeServer
 
 log = logging.getLogger("mpvbridge")
 
-APP_ACTIVITY = "io.github.kpganon.termuxmpvcontrols/.MainActivity"
+APP_ACTIVITY = "io.github.kpganon.mpvbridge/.MainActivity"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,8 +69,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="always let mpv resolve the playlist URL instead of using the cached copy",
     )
+    parser.add_argument(
+        "--bridge-idle",
+        action="store_true",
+        help="start mpv idle and wait for the app to pick a playlist (implied by no media arg)",
+    )
     parser.add_argument("--bridge-verbose", action="store_true", help="log bridge activity")
     return parser
+
+
+#: mpv options that already put it in idle mode; injecting another would be redundant, and
+#: `--idle=no` is someone deliberately asking for the opposite.
+_IDLE_OPTIONS = ("--idle", "--idle=yes", "--idle=once")
+
+
+def wants_idle(mpv_args: list[str], source_url: str | None, forced: bool) -> bool:
+    """Should mpv be started with nothing to play?
+
+    Without ``--idle`` mpv exits the moment it finds it has no files, taking the bridge with it --
+    so an app-driven launch, which supplies the playlist later over the socket, has to ask for it.
+    """
+    if any(arg.startswith("--idle") for arg in mpv_args):
+        return False
+    return forced or source_url is None
 
 
 def run_quietly(command: list[str]) -> None:
@@ -172,6 +197,9 @@ async def run(options: argparse.Namespace, mpv_args: list[str]) -> int:
         argv = [mpv_binary]
         if inject:
             argv.append(f"--input-ipc-server={socket_path}")
+        if wants_idle(mpv_args, source_url, options.bridge_idle):
+            log.info("no playlist given; starting mpv idle and waiting for the app")
+            argv.append("--idle=yes")
         argv.extend(mpv_args)
         log.debug("starting %s", argv)
         process = await asyncio.create_subprocess_exec(*argv)

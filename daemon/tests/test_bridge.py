@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from mpvbridge.bridge import Bridge
+from mpvbridge.cache import PlaylistCache
 from mpvbridge.ipc import MpvIpcError
 
 
@@ -87,23 +88,24 @@ def test_a_failing_command_is_swallowed_not_raised():
     assert dispatch("next", fail=True).calls == []
 
 
-def test_snapshot_messages_are_ordered_hello_then_state():
-    bridge = Bridge(FakeIpc(), FakeServer())
+def test_snapshot_messages_are_ordered_hello_then_state(tmp_path):
+    bridge = Bridge(FakeIpc(), FakeServer(), cache=PlaylistCache(tmp_path))
     bridge.mpv_version = "0.38.0"
     messages = bridge.snapshot_messages()
 
-    assert [message["type"] for message in messages] == ["hello", "state"]
+    assert [message["type"] for message in messages] == ["hello", "state", "library"]
     assert messages[0]["mpv"] == "0.38.0"
 
 
-def test_snapshot_includes_playlist_once_known():
-    bridge = Bridge(FakeIpc(), FakeServer())
+def test_snapshot_includes_playlist_once_known(tmp_path):
+    bridge = Bridge(FakeIpc(), FakeServer(), cache=PlaylistCache(tmp_path))
     bridge._playlist_message = {"type": "playlist", "entries": []}  # noqa: SLF001
 
     assert [message["type"] for message in bridge.snapshot_messages()] == [
         "hello",
         "state",
         "playlist",
+        "library",
     ]
 
 

@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Termux mpv Controls</string>
+    <string name="app_name">mpvbridge</string>
 
     <string name="waiting_for_mpv">Waiting for mpvbridge</string>
     <string name="nothing_playing">Nothing playing</string>
+    <string name="nothing_loaded">Connected · nothing loaded</string>
     <string name="notifications_denied">Notification permission denied — no media controls</string>
     <string name="playing">Playing</string>
     <string name="paused">Paused</string>
     <string name="zero_time">0:00</string>
 
     <string name="nav_now_playing">Now Playing</string>
+    <string name="nav_library">Library</string>
     <string name="nav_playlist">Playlist</string>
     <string name="nav_favorites">Favorites</string>
     <string name="nav_settings">Settings</string>
@@ -23,14 +25,62 @@
     <string name="favorite">Favorite</string>
 
     <string name="playlist_status">%1$s · track %2$d of %3$d</string>
-    <string name="playlist_subtitle">%1$d tracks</string>
-    <string name="playlist_subtitle_hidden">%1$d tracks · %2$d unavailable hidden</string>
-    <string name="favorites_subtitle">%1$d favorites</string>
+    <plurals name="playlist_subtitle">
+        <item quantity="one">%1$d track</item>
+        <item quantity="other">%1$d tracks</item>
+    </plurals>
+    <plurals name="playlist_subtitle_hidden">
+        <item quantity="one">%1$d track · %2$d unavailable hidden</item>
+        <item quantity="other">%1$d tracks · %2$d unavailable hidden</item>
+    </plurals>
+    <plurals name="favorites_subtitle">
+        <item quantity="one">%1$d favorite</item>
+        <item quantity="other">%1$d favorites</item>
+    </plurals>
     <string name="favorites_empty">No favorites yet.\n\nStar a track from Now Playing and it will appear here.</string>
-    <string name="playlist_empty">No playlist.\n\nStart mpvbridge in Termux, or use Start in Settings.</string>
+    <string name="playlist_empty">Nothing loaded.\n\nPick a playlist from Library.</string>
+    <string name="filter_hint">Filter</string>
+    <string name="filter_subtitle">%1$d of %2$d</string>
+    <string name="filter_no_matches">Nothing matches that.</string>
+
+    <string name="library_add">Add a playlist</string>
+    <string name="library_empty">No playlists yet.\n\nTap + and paste a YouTube playlist link, or share one to this app.</string>
+    <plurals name="library_subtitle">
+        <item quantity="one">%1$d playlist</item>
+        <item quantity="other">%1$d playlists</item>
+    </plurals>
+    <plurals name="library_row_subtitle">
+        <item quantity="one">%1$d track</item>
+        <item quantity="other">%1$d tracks</item>
+    </plurals>
+    <plurals name="library_row_playing">
+        <item quantity="one">%1$d track · playing</item>
+        <item quantity="other">%1$d tracks · playing</item>
+    </plurals>
+    <string name="library_row_unnamed">Not fetched yet</string>
+    <string name="library_add_title">Add playlist</string>
+    <string name="library_add_hint">YouTube playlist link</string>
+    <string name="library_add_message">The name and track list come from yt-dlp, which takes a few seconds on a large playlist.</string>
+    <string name="library_add_button">Add</string>
+    <string name="library_remove_title">Remove %1$s?</string>
+    <string name="library_remove_message">This forgets the cached track list. The playlist itself is untouched, and playback keeps going.</string>
+    <string name="library_remove_button">Remove</string>
+    <string name="library_not_a_playlist">That does not look like a playlist link</string>
+    <string name="library_needs_daemon">Not connected to mpvbridge yet</string>
+    <string name="library_loading">Loading %1$s…</string>
+    <string name="library_added">Added %1$s</string>
+    <string name="library_shared">Add %1$s to your library?</string>
 
     <string name="refresh_running">Checking the source playlist…</string>
-    <string name="refresh_added">Added %1$d new tracks</string>
+    <string name="refresh_running_named">Fetching %1$s…</string>
+    <plurals name="refresh_added">
+        <item quantity="one">Added %1$d new track</item>
+        <item quantity="other">Added %1$d new tracks</item>
+    </plurals>
+    <plurals name="library_added_count">
+        <item quantity="one">Added %1$s · %2$d track</item>
+        <item quantity="other">Added %1$s · %2$d tracks</item>
+    </plurals>
     <string name="refresh_up_to_date">Already up to date</string>
     <string name="refresh_failed">Refresh failed: %1$s</string>
     <string name="shuffled">Playlist shuffled</string>
@@ -50,6 +100,11 @@
     <string name="settings_keep_alive">Headset button keep-alive</string>
     <string name="settings_keep_alive_hint">Required for headset taps to reach mpv. Android only routes media buttons to an app that is producing audio, so this plays a silent track. Turning it off disables bud and headphone controls entirely.</string>
     <string name="settings_launch">Launch</string>
+    <string name="settings_auto_start">Start Termux when the app opens</string>
+    <string name="settings_auto_start_hint">Runs the command below in Termux whenever the app is opened and nothing is listening on the port, so opening the app is enough to start playing.</string>
+    <string name="settings_resume_last">Resume the last playlist</string>
+    <string name="settings_resume_last_hint">When the daemon comes up with nothing loaded, play whatever was playing last.</string>
+    <string name="launch_auto">Nothing on %1$s:%2$d — starting Termux</string>
     <string name="settings_launch_command">Command</string>
     <string name="settings_launch_hint">Runs in Termux. Needs allow-external-apps=true in ~/.termux/termux.properties.</string>
     <string name="settings_start">Start playback in Termux</string>
@@ -59,9 +114,10 @@
     <string name="settings_about">About</string>
 
     <string name="launch_started">Asked Termux to start playback</string>
+    <string name="launch_no_socket">Termux was asked to start, but nothing is listening on port %1$d. Termux needs allow-external-apps=true in ~/.termux/termux.properties.</string>
     <string name="launch_no_termux">Termux is not installed</string>
-    <string name="launch_no_permission">Termux denied the request — set allow-external-apps=true in ~/.termux/termux.properties, then reinstall this app</string>
-    <string name="launch_failed">Could not start: %1$s</string>
+    <string name="launch_no_permission">Permission refused. The app needs "Run commands in Termux" to start playback for you.</string>
+    <string name="launch_failed">Could not start: %1$s. Termux also needs allow-external-apps=true in ~/.termux/termux.properties.</string>
     <string name="exported_favorites">Exported %1$d favorites to Download</string>
     <string name="imported_favorites">Imported %1$d favorites</string>
     <string name="import_missing">No export found in Download</string>

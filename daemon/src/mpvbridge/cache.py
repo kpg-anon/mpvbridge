@@ -7,7 +7,9 @@ Two files under ``$XDG_CACHE_HOME/mpvbridge`` (or ``~/.cache/mpvbridge``):
     this only grows and never needs invalidating.
 
 ``playlists/<sha1-of-url>.json``
-    The ordered video ids for one source playlist, plus its URL and when it was fetched.
+    The ordered video ids for one source playlist, plus its URL, its title where yt-dlp told us
+    one, and when it was fetched. These files are also the app's playlist library: the only way
+    to enumerate them is to read them, since they are named by a hash of the URL.
 
 Splitting them this way means re-fetching a playlist only needs ids -- titles are resolved
 locally -- and it lets the bridge answer a client with a full, titled playlist immediately on
@@ -113,13 +115,65 @@ class PlaylistCache:
             return []
         return [str(entry) for entry in ids if entry]
 
-    def save_playlist(self, url: str, ids: list[str]) -> None:
+    def save_playlist(self, url: str, ids: list[str], title: str | None = None) -> None:
         if not url or not ids:
             return
-        _write_json(
-            self.playlist_path(url),
-            {"url": url, "fetched": int(time.time()), "ids": ids},
-        )
+        payload: dict[str, Any] = {"url": url, "fetched": int(time.time()), "ids": ids}
+        # A save triggered by mpv's own playlist knows no title; keep the one yt-dlp found.
+        keep = title or self.playlist_title(url)
+        if keep:
+            payload["title"] = keep
+        _write_json(self.playlist_path(url), payload)
+
+    def playlist_title(self, url: str) -> str | None:
+        payload = _read_json(self.playlist_path(url), None)
+        if not isinstance(payload, dict):
+            return None
+        title = payload.get("title")
+        return title if isinstance(title, str) and title.strip() else None
+
+    def known_playlists(self) -> list[dict[str, Any]]:
+        """Every playlist this cache has seen, newest fetch first.
+
+        The per-playlist files are named by a hash of the URL, so the only way to enumerate them
+        is to read them. There are a handful, not thousands.
+        """
+        found: list[dict[str, Any]] = []
+        directory = self.root / "playlists"
+        if not directory.is_dir():
+            return found
+        for path in sorted(directory.glob("*.json")):
+            payload = _read_json(path, None)
+            if not isinstance(payload, dict):
+                continue
+            url = payload.get("url")
+            ids = payload.get("ids")
+            if not isinstance(url, str) or not isinstance(ids, list):
+                continue
+            title = payload.get("title")
+            found.append(
+                {
+                    "url": url,
+                    "title": title if isinstance(title, str) else None,
+                    "count": len(ids),
+                    "fetched": int(payload.get("fetched") or 0),
+                }
+            )
+        found.sort(key=lambda item: item["fetched"], reverse=True)
+        return found
+
+    def forget_playlist(self, url: str) -> bool:
+        """Drop one playlist from the cache. Titles are shared, so they stay."""
+        removed = False
+        for path in (self.playlist_path(url), self.m3u_path(url)):
+            try:
+                path.unlink()
+                removed = True
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                log.warning("could not remove %s: %s", path, exc)
+        return removed
 
     def m3u_path(self, url: str) -> Path:
         return self.playlist_path(url).with_suffix(".m3u")

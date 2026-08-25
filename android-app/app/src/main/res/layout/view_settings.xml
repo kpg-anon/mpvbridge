@@ -75,6 +75,28 @@
             android:layout_marginTop="22dp" android:paddingBottom="6dp"
             android:text="@string/settings_launch" android:textAllCaps="true"
             android:textColor="@color/accent" android:textSize="11sp" android:textStyle="bold" />
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/settingAutoStart"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/settings_auto_start"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingBottom="8dp" android:text="@string/settings_auto_start_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/settingResumeLast"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/settings_resume_last"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingBottom="8dp" android:text="@string/settings_resume_last_hint"
+            android:textColor="@color/text_tertiary" android:textSize="12sp" />
+
         <EditText android:id="@+id/settingLaunchCommand"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:autofillHints="" android:hint="@string/settings_launch_command"

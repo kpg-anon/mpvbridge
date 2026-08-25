@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "termux-mpv-controls"
+rootProject.name = "mpvbridge"
 include(":app")

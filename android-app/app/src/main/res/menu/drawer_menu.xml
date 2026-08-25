@@ -3,6 +3,8 @@
     <group android:checkableBehavior="single">
         <item android:id="@+id/nav_now_playing" android:icon="@drawable/ic_now_playing"
             android:title="@string/nav_now_playing" android:checked="true" />
+        <item android:id="@+id/nav_library" android:icon="@drawable/ic_library"
+            android:title="@string/nav_library" />
         <item android:id="@+id/nav_playlist" android:icon="@drawable/ic_playlist"
             android:title="@string/nav_playlist" />
         <item android:id="@+id/nav_favorites" android:icon="@drawable/ic_star"

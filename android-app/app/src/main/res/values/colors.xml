@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0E1116</color>
+    <!-- Matches the flat background baked into the launcher artwork. -->
+    <color name="ic_launcher_background">#141414</color>
 
     <!-- Neutral, slightly blue-shifted dark surfaces so album art stays the brightest thing. -->
     <color name="surface">#0E1116</color>

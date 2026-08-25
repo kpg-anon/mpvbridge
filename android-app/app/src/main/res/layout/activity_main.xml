@@ -19,6 +19,7 @@
             android:layout_height="?attr/actionBarSize"
             android:background="@color/surface_raised"
             app:navigationIcon="@drawable/ic_menu"
+            app:subtitleTextColor="@color/text_tertiary"
             app:title="@string/nav_now_playing"
             app:titleTextColor="@color/text_primary" />
 
@@ -28,6 +29,8 @@
             android:layout_weight="1">
 
             <include android:id="@+id/nowPlayingView" layout="@layout/view_now_playing" />
+
+            <include android:id="@+id/libraryView" layout="@layout/view_library" />
 
             <include android:id="@+id/playlistView" layout="@layout/view_list" />
 

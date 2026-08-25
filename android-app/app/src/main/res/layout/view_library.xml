@@ -15,7 +15,7 @@
         android:paddingBottom="6dp">
 
         <TextView
-            android:id="@+id/listSubtitle"
+            android:id="@+id/librarySubtitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -24,38 +24,17 @@
             android:textColor="@color/text_tertiary"
             android:textSize="12sp" />
 
-        <ImageButton android:id="@+id/listShuffle"
+        <ImageButton
+            android:id="@+id/libraryAdd"
             style="@style/Widget.Material3.Button.IconButton"
-            android:layout_width="48dp" android:layout_height="44dp"
-            android:contentDescription="@string/shuffle"
-            android:src="@drawable/ic_shuffle" />
-
-        <ImageButton android:id="@+id/listRefresh"
-            style="@style/Widget.Material3.Button.IconButton"
-            android:layout_width="48dp" android:layout_height="44dp"
-            android:contentDescription="@string/refresh"
-            android:src="@drawable/ic_refresh" />
+            android:layout_width="48dp"
+            android:layout_height="44dp"
+            android:contentDescription="@string/library_add"
+            android:src="@drawable/ic_add" />
     </LinearLayout>
 
-    <EditText
-        android:id="@+id/listFilter"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="4dp"
-        android:autofillHints=""
-        android:drawableStart="@drawable/ic_search"
-        android:drawablePadding="10dp"
-        android:hint="@string/filter_hint"
-        android:inputType="text"
-        android:maxLines="1"
-        android:textColor="@color/text_primary"
-        android:textColorHint="@color/text_tertiary"
-        android:textSize="14sp" />
-
     <ProgressBar
-        android:id="@+id/listProgress"
+        android:id="@+id/libraryProgress"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="3dp"
@@ -63,23 +42,23 @@
         android:visibility="gone" />
 
     <TextView
-        android:id="@+id/listEmpty"
+        android:id="@+id/libraryEmpty"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
         android:padding="32dp"
+        android:text="@string/library_empty"
         android:textColor="@color/text_tertiary"
         android:textSize="14sp"
         android:visibility="gone" />
 
     <ListView
-        android:id="@+id/listView"
+        android:id="@+id/libraryList"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:divider="@null"
         android:dividerHeight="0dp"
-        android:fastScrollEnabled="true"
         android:scrollbarStyle="outsideOverlay" />
 </LinearLayout>

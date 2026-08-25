@@ -77,10 +77,10 @@ def run_refresh(monkeypatch, tmp_path, fetched, playlist, source=SOURCE):
     server = FakeServer()
     bridge = Bridge(ipc, server, source_url=source, cache=PlaylistCache(tmp_path))
 
-    async def fake_fetch():
-        return fetched
+    async def fake_fetch(url):
+        return "Sample playlist", fetched
 
-    monkeypatch.setattr(bridge, "_fetch_source_ids", fake_fetch)
+    monkeypatch.setattr(bridge, "_fetch_playlist", fake_fetch)
     monkeypatch.setattr("mpvbridge.bridge.shutil.which", lambda _: "/usr/bin/yt-dlp")
     asyncio.run(bridge._refresh_playlist())  # noqa: SLF001
     return ipc, server, bridge
@@ -173,4 +173,4 @@ def test_seeding_is_skipped_without_a_cache_entry(tmp_path):
     bridge = Bridge(FakeIpc(), FakeServer(), source_url=SOURCE, cache=PlaylistCache(tmp_path))
     bridge._seed_playlist_from_cache()  # noqa: SLF001
 
-    assert [m["type"] for m in bridge.snapshot_messages()] == ["hello", "state"]
+    assert [m["type"] for m in bridge.snapshot_messages()] == ["hello", "state", "library"]

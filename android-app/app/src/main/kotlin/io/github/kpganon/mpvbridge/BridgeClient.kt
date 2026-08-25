@@ -1,4 +1,4 @@
-package io.github.kpganon.termuxmpvcontrols
+package io.github.kpganon.mpvbridge
 
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +40,19 @@ class BridgeClient(
 
     private val _playlist = MutableStateFlow<List<Protocol.PlaylistEntry>>(emptyList())
     val playlist: StateFlow<List<Protocol.PlaylistEntry>> = _playlist.asStateFlow()
+
+    /**
+     * True once the daemon's first `state` message has landed on the current connection.
+     *
+     * [state] starts at a default snapshot that is indistinguishable from "mpv is idle with
+     * nothing loaded", and acting on that before the real one arrives would replace whatever is
+     * already playing.
+     */
+    private val _hasState = MutableStateFlow(false)
+    val hasState: StateFlow<Boolean> = _hasState.asStateFlow()
+
+    private val _library = MutableStateFlow<List<Protocol.SavedPlaylist>>(emptyList())
+    val library: StateFlow<List<Protocol.SavedPlaylist>> = _library.asStateFlow()
 
     private val _status = MutableStateFlow(Status.DISCONNECTED)
     val status: StateFlow<Status> = _status.asStateFlow()
@@ -136,6 +149,7 @@ class BridgeClient(
             writer = out
         }
         Log.i(TAG, "connected to $host:$port")
+        _hasState.value = false
         _status.value = Status.CONNECTED
         onConnected?.invoke()
 
@@ -161,7 +175,16 @@ class BridgeClient(
                     _mpvVersion.value = message.mpv
                 }
 
-                is Protocol.Message.StateChanged -> _state.value = message.state
+                is Protocol.Message.StateChanged -> {
+                    _state.value = message.state
+                    _hasState.value = true
+                }
+
+                is Protocol.Message.LibraryChanged -> {
+                    Log.d(TAG, "library: ${message.playlists.size} playlists")
+                    _library.value = message.playlists
+                }
+
                 is Protocol.Message.PlaylistChanged -> {
                     Log.d(TAG, "playlist: ${message.entries.size} entries")
                     _playlist.value = message.entries
@@ -177,6 +200,9 @@ class BridgeClient(
                 Protocol.Message.Bye -> {
                     _state.value = Protocol.State()
                     _playlist.value = emptyList()
+                    _hasState.value = false
+                    // The library is the daemon's cache, not ours -- it comes back on reconnect.
+                    _library.value = emptyList()
                     onBye?.invoke()
                     return "mpv exited (bye)"
                 }

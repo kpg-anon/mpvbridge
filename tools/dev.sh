@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# Dev pipeline for termux-mpv-controls, run from the PC in Git Bash.
+# Dev pipeline for mpvbridge, run from the PC in Git Bash.
 #
-#   tools/dev.sh up          build, install, deploy the daemon, tail everything
-#   tools/dev.sh connect     re-establish wireless adb after it drops
+#   tools/dev.sh up             build, install, deploy the daemon, tail everything
+#   tools/dev.sh connect        re-establish wireless adb after it drops
+#   tools/dev.sh connect IP:PORT   ... when mDNS finds nothing (some networks drop multicast)
+#   tools/dev.sh pair IP:PORT CODE first time on a network: Wireless debugging > Pair with code
 #   tools/dev.sh build|install|push|restart|logs|status
 #
 # The daemon half cannot be driven over adb directly: adb runs as the `shell` user and cannot
@@ -18,16 +20,18 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_CLT="${ANDROID_HOME:-$HOME/scoop/apps/android-clt/current}"
 ADB="${ADB:-$ANDROID_CLT/platform-tools/adb.exe}"
 
-PACKAGE="io.github.kpganon.termuxmpvcontrols"
+PACKAGE="io.github.kpganon.mpvbridge"
 ACTIVITY="$PACKAGE/.MainActivity"
-DEVICE_DIR="/sdcard/Download/termux-mpv-controls"
+DEVICE_DIR="/sdcard/Download/mpvbridge"
 APK="$REPO_ROOT/android-app/app/build/outputs/apk/debug/app-debug.apk"
 DEVICE_CACHE="$REPO_ROOT/.dev-device"
 
 MDNS_SERVICE_SUFFIX="_adb-tls-connect._tcp"
 LOG_TAGS="MpvSession:V MpvBridgeClient:V MpvPlayer:V MpvSilentAudio:V AndroidRuntime:E"
 
-DEFAULT_MPV_ARGS="--bridge-verbose --vo=null https://www.youtube.com/playlist?list=PLFx03tuShoP4E0Q2fvsCiuQZcW9Gv3Msw"
+# No media argument: mpv starts idle and the app says what to play, which is the path the app
+# now takes. Set MPV_ARGS to pin a playlist on the command line instead.
+DEFAULT_MPV_ARGS="--bridge-verbose --vo=null"
 
 say()  { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
@@ -47,9 +51,32 @@ device_online() {
     "$ADB" devices 2>/dev/null | grep -q "^${s}[[:space:]]\+device$"
 }
 
+# Pairing survives a reconnect but not a new network: Wireless debugging switches itself off
+# when the network changes, and a phone that has never been paired from this PC on this network
+# has to be paired again. The code and its port come from
+# Settings > Developer options > Wireless debugging > Pair device with pairing code -- note that
+# the pairing port is a *different* port from the one connect uses.
+cmd_pair() {
+    local addr="${1:-}" code="${2:-}"
+    [ -n "$addr" ] && [ -n "$code" ] \
+        || die "usage: tools/dev.sh pair <ip:pairing-port> <6-digit code>"
+    say "pairing with $addr"
+    "$ADB" pair "$addr" "$code" || die "pairing failed"
+    cmd_connect
+}
+
 cmd_connect() {
+    local explicit="${1:-}"
     if device_online; then
         say "already connected: $(serial)"
+        return 0
+    fi
+    # An address given by hand skips discovery, which some networks block outright.
+    if [ -n "$explicit" ]; then
+        "$ADB" connect "$explicit" >/dev/null 2>&1
+        echo "$explicit" > "$DEVICE_CACHE"
+        device_online || die "could not connect to $explicit"
+        say "connected: $explicit"
         return 0
     fi
     say "looking for the device over mDNS..."
@@ -58,7 +85,7 @@ cmd_connect() {
         svc="$("$ADB" mdns services 2>/dev/null | grep "$MDNS_SERVICE_SUFFIX" | head -1)"
         [ -n "$svc" ] && break
     done
-    [ -n "$svc" ] || die "no device found. Turn Wireless debugging back on (it switches itself off when the network changes) and re-run."
+    [ -n "$svc" ] || die "no device found. Turn Wireless debugging back on (it switches itself off when the network changes), then re-run -- or pass the address by hand: tools/dev.sh connect IP:PORT. If it has never been paired on this network: tools/dev.sh pair IP:PAIRING-PORT CODE."
 
     addr="$(echo "$svc" | awk '{print $3}')"
     "$ADB" connect "$addr" >/dev/null 2>&1
@@ -92,6 +119,11 @@ cmd_install() {
     # -r keeps app data (favorites live in the app), never -d or uninstall.
     "$ADB" install -r "$(win_path "$APK")" 2>&1 | tail -1
     "$ADB" shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1
+    # Termux declares RUN_COMMAND as a dangerous permission, so it is not granted at install.
+    # The app asks for it at runtime; granting it here just saves tapping through the dialog on
+    # every reinstall. This works because *this* package declares it -- pm grant only flips
+    # permissions a package already declares, which is why the same trick fails for adb itself.
+    "$ADB" shell pm grant "$PACKAGE" com.termux.permission.RUN_COMMAND >/dev/null 2>&1
 }
 
 pack_daemon() {
@@ -179,12 +211,13 @@ cmd_up() {
 }
 
 usage() {
-    sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
 case "${1:-up}" in
-    connect) cmd_connect ;;
+    pair)    cmd_pair "${2:-}" "${3:-}" ;;
+    connect) cmd_connect "${2:-}" ;;
     build)   cmd_build ;;
     install) cmd_connect; cmd_install ;;
     push)    cmd_connect; cmd_push ;;
