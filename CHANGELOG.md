@@ -9,7 +9,11 @@ version and are expected to match.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Tapping the media notification or the lockscreen card opens the app. The `MediaSession` carried
+  no session activity, so Media3 had nothing to put in the notification's content intent and a tap
+  did nothing at all.
 
 ## [0.1.0] - 2026-08-25
 

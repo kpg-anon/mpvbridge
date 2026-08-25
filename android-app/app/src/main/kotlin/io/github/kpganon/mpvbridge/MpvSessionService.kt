@@ -1,5 +1,6 @@
 package io.github.kpganon.mpvbridge
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
 import android.os.Looper
@@ -52,6 +53,7 @@ class MpvSessionService : MediaSessionService() {
         player = MpvPlayer(Looper.getMainLooper(), ::onPlayerCommand)
         session = MediaSession.Builder(this, player)
             .setId("mpv")
+            .setSessionActivity(openAppIntent())
             .setCallback(SessionCallback())
             .build()
 
@@ -74,6 +76,26 @@ class MpvSessionService : MediaSessionService() {
         scope.launch { observeLibrary() }
         scope.launch { observeStatus() }
         bridge.start()
+    }
+
+    /**
+     * Where the notification and the lockscreen card go when tapped.
+     *
+     * Without a session activity the media card is inert -- Media3 has nothing to put in the
+     * notification's content intent, so a tap does nothing at all. The launcher intent is used in
+     * preference to an explicit [MainActivity] one because it resumes the existing task the way
+     * tapping the icon does, rather than starting a second copy of the activity on top of it.
+     */
+    private fun openAppIntent(): PendingIntent {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+            ?: Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
     }
 
     private suspend fun observeBridge() {
